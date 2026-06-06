@@ -900,7 +900,7 @@
             }
             
             async function animateMove(fr, fc, tr, tc) {
-                console.log("ANIMATE:", fr, fc, "->", tr, tc);
+                
                 if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     const animations = [];
@@ -910,7 +910,7 @@
     function createAnim(p, dRow, dCol) {
         return new Promise(resolve => {
             const ghost = p.cloneNode(true);
-            ghost.className = 'piece-ghost';
+            ghost.classList.add('piece-ghost');
             ghost.style.width = p.offsetWidth + 'px';
             ghost.style.height = p.offsetHeight + 'px';
             ghost.style.position = 'absolute';
@@ -918,8 +918,6 @@
             ghost.style.left = '0';
             ghost.style.pointerEvents = 'none';
             ghost.style.zIndex = '9999';
-            ghost.style.opacity = '1';
-            ghost.style.border = '2px solid red';
             p.parentElement.appendChild(ghost);
             setTimeout(() => ghost.remove(), 300);
 

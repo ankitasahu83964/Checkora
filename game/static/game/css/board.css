@@ -1965,11 +1965,26 @@ body.blindfold-mode .capture-ring {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chessboard.paused::after,
-  .chessboard.paused::before {
-    animation: none !important;
-    transition: none !important;
-  }
+
+    .flash-error {
+        animation: none;
+        border-color: #ff6b6b;
+        box-shadow: 0 0 20px rgba(255, 107, 107, 0.8);
+    }
+
+    .chessboard.paused::after,
+    .chessboard.paused::before {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    .piece {
+        transition: none !important;
+    }
+
+    .piece-ghost {
+        display: none !important;
+    }
 }
 
 
