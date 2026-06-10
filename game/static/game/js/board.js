@@ -2735,6 +2735,34 @@
     const blackClock = document.getElementById('blackClock');
 
     if (!whiteClock || !blackClock) return;
+    
+    // Determine target clock before any DOM changes
+let targetClock = null;
+
+if (!paused && !gameOver) {
+    if (whiteClock.classList.contains('active')) {
+        targetClock = whiteClock;
+    } else if (blackClock.classList.contains('active')) {
+        targetClock = blackClock;
+    }
+}
+
+// Check if dots are already in the correct place
+const whiteTimeEl = whiteClock.querySelector('.time');
+const blackTimeEl = blackClock.querySelector('.time');
+
+const whiteHasDots =
+    whiteTimeEl?.querySelector('.thinking-dots') !== null;
+
+const blackHasDots =
+    blackTimeEl?.querySelector('.thinking-dots') !== null;
+
+if (targetClock === whiteClock && whiteHasDots && !blackHasDots) return;
+
+if (targetClock === blackClock && blackHasDots && !whiteHasDots) return;
+
+if (!targetClock && !whiteHasDots && !blackHasDots) return;
+
 
     // Remove existing dots
     whiteClock.querySelector('.thinking-dots')?.remove();
@@ -2750,7 +2778,7 @@
                 ? blackClock
                 : null;
 
-    if (!activeClock) return;
+    if (!targetClock) return;
     
     const dots = document.createElement('span');
 dots.className = 'thinking-dots';
@@ -2761,7 +2789,7 @@ dots.innerHTML = `
     <span></span>
 `;
 
-const timeEl = activeClock.querySelector('.time');
+const timeEl = targetClock.querySelector('.time');
 
 if (timeEl) {
     timeEl.appendChild(dots);
