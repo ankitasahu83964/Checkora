@@ -220,15 +220,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
-// Enable Enter key submission for Authentication Forms
+// Enable Enter key submission for Authentication Forms safely after DOM loads
+document.addEventListener("DOMContentLoaded", function () {
     const authInputs = document.querySelectorAll('.auth-container input, .login-form input, .signup-form input, input[type="password"]');
     
     authInputs.forEach(input => {
         input.addEventListener('keydown', function (event) {
             if (event.key === 'Enter') {
-                event.preventDefault(); // Default submit refresh ko roko
+                event.preventDefault();
                 
-                // Form ya container ke submit button ko click trigger karo
                 const container = input.closest('form') || input.closest('.auth-container') || document;
                 const submitBtn = container.querySelector('button[type="submit"]') || container.querySelector('.submit-btn') || container.querySelector('#submit-btn');
                 
@@ -238,3 +238,4 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     });
+});
