@@ -481,11 +481,36 @@ class Reply(models.Model):
         related_name="forum_replies"
     )
 
+    reply_to = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="child_replies"
+    )  
+
     content = models.TextField()
+
+    is_edited = models.BooleanField(default=False)  
+    is_deleted = models.BooleanField(default=False)  
+
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)  
 
     class Meta:
         ordering = ["created_at"]
+
+    def clean(self):
+        super().clean()
+        if self.reply_to_id:
+            if self.reply_to_id == self.pk:
+                raise ValidationError({"reply_to": "a reply cannot reference itself."})
+            if self.reply_to and self.reply_to.discussion_id != self.discussion_id:
+                raise ValidationError({"reply_to": "reply_to must belong to the same discussion."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.user.username} - {self.discussion.title}"
