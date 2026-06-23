@@ -1912,9 +1912,12 @@ def update_puzzle_stats(request):
     return JsonResponse({"success": True})
 
 
-@login_required
-@require_GET
 def puzzle_stats_view(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            "streak": 0,
+            "longest_streak": 0
+        })
     stats, _ = PuzzleStats.objects.get_or_create(user=request.user)
     return JsonResponse({
         "streak": stats.current_streak,
