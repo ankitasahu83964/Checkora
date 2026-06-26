@@ -1440,6 +1440,18 @@ def get_ip_lockout_key(ip):
     return f'login_lockout:ip:{digest}'
 
 
+def get_analyze_rate_user_key(user_id):
+    """Get the cache key for per-user analyze game rate limiting."""
+    digest = hashlib.sha256(str(user_id).encode('utf-8')).hexdigest()
+    return f'analyze_rate:user:{digest}'
+
+
+def get_analyze_rate_ip_key(ip):
+    """Get the cache key for per-IP analyze game rate limiting."""
+    digest = hashlib.sha256(ip.encode('utf-8')).hexdigest()
+    return f'analyze_rate:ip:{digest}'
+
+
 def increment_counter(key, timeout):
     """Increment cache value atomically or fall back safely."""
     # DatabaseCache does not provide atomic incr, so force fallback lock.
@@ -2168,6 +2180,19 @@ def analyze_game_view(request):
     """
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    window = getattr(settings, 'ANALYZE_GAME_RATE_WINDOW_SECONDS', 60)
+    user_max = getattr(settings, 'ANALYZE_GAME_USER_MAX_REQUESTS', 10)
+    ip_max = getattr(settings, 'ANALYZE_GAME_IP_MAX_REQUESTS', 20)
+
+    user_key = get_analyze_rate_user_key(request.user.id)
+    ip_key = get_analyze_rate_ip_key(get_client_ip(request))
+
+    user_count = increment_counter(user_key, timeout=window)
+    ip_count = increment_counter(ip_key, timeout=window)
+
+    if user_count > user_max or ip_count > ip_max:
+        return JsonResponse({'error': 'Too many requests'}, status=429)
 
     try:
         data = json.loads(request.body)

@@ -233,3 +233,68 @@ class AnalyzeGameCsrfTest(TestCase):
             HTTP_X_CSRFTOKEN=token,
         )
         self.assertEqual(response.status_code, 200)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class AnalyzeGameRateLimitTest(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from django.core.cache import cache
+        self.user1 = User.objects.create_user(username='ratelimituser1', password='password123')
+        self.user2 = User.objects.create_user(username='ratelimituser2', password='password123')
+        cache.clear()
+
+    def tearDown(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    @override_settings(ANALYZE_GAME_RATE_WINDOW_SECONDS=60, ANALYZE_GAME_USER_MAX_REQUESTS=2, ANALYZE_GAME_IP_MAX_REQUESTS=3)
+    def test_normal_usage_under_limit(self):
+        self.client.force_login(self.user1)
+        payload = {"moves": ["e4", "e5"], "result": "Win", "reason": "Checkmate"}
+        
+        response = self.client.post(reverse('analyze_game'), data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+
+    @override_settings(ANALYZE_GAME_RATE_WINDOW_SECONDS=60, ANALYZE_GAME_USER_MAX_REQUESTS=2, ANALYZE_GAME_IP_MAX_REQUESTS=3)
+    def test_limit_enforcement(self):
+        self.client.force_login(self.user1)
+        payload = {"moves": ["e4", "e5"], "result": "Win", "reason": "Checkmate"}
+        
+        for _ in range(2):
+            response = self.client.post(reverse('analyze_game'), data=json.dumps(payload), content_type='application/json')
+            self.assertEqual(response.status_code, 200)
+            
+        response = self.client.post(reverse('analyze_game'), data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json(), {'error': 'Too many requests'})
+
+    @override_settings(ANALYZE_GAME_RATE_WINDOW_SECONDS=60, ANALYZE_GAME_USER_MAX_REQUESTS=3, ANALYZE_GAME_IP_MAX_REQUESTS=2)
+    def test_per_ip_independence(self):
+        payload = {"moves": ["e4", "e5"], "result": "Win", "reason": "Checkmate"}
+        
+        self.client.force_login(self.user1)
+        for _ in range(2):
+            response = self.client.post(reverse('analyze_game'), data=json.dumps(payload), content_type='application/json')
+            self.assertEqual(response.status_code, 200)
+            
+        self.client.force_login(self.user2)
+        response = self.client.post(reverse('analyze_game'), data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json(), {'error': 'Too many requests'})
+
+    @override_settings(ANALYZE_GAME_RATE_WINDOW_SECONDS=60, ANALYZE_GAME_USER_MAX_REQUESTS=2, ANALYZE_GAME_IP_MAX_REQUESTS=3)
+    def test_recovery_after_cache_clear(self):
+        from django.core.cache import cache
+        self.client.force_login(self.user1)
+        payload = {"moves": ["e4", "e5"], "result": "Win", "reason": "Checkmate"}
+        
+        for _ in range(2):
+            self.client.post(reverse('analyze_game'), data=json.dumps(payload), content_type='application/json')
+            
+        response = self.client.post(reverse('analyze_game'), data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(response.status_code, 429)
+        
+        cache.clear()
+        response = self.client.post(reverse('analyze_game'), data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(response.status_code, 200)
