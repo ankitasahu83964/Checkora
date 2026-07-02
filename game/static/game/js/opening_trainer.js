@@ -709,6 +709,10 @@ if (themeSelect) {
         if (viewingMoveIndex !== currentMove) return;
         if (currentMove >= OPENING_MOVES.length) return;
 
+        // Ensure it is the user's turn before showing a hint
+        const isUserTurn = (userColor === "w" && currentMove % 2 === 0) || (userColor === "b" && currentMove % 2 === 1);
+        if (!isUserTurn) return;
+
         const expectedMove = OPENING_MOVES[currentMove];
         const color = currentMove % 2 === 0 ? "w" : "b";
         const moveParsed = parseSAN(expectedMove, color);
