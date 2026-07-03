@@ -4193,23 +4193,33 @@
             const chess = new window.Chess(data.fen);
             
             // Minimal normalization: fix casing so chess.js can parse user input
-            // without corrupting check/checkmate suffixes (+/#) or promotion (=Q)
+            // Rules:
+            //   - Castling variants: map to standard O-O / O-O-O
+            //   - Uppercase [NBRQK]: definite piece move — uppercase first char, lowercase body, preserve suffix
+            //   - Lowercase [nrqk]: definite piece move (n,r,q,k are not valid pawn files) — same as above
+            //   - Lowercase 'b' and all [a-h]/[A-H]: pawn move — lowercase entire body, preserve suffix
+            // Promotion suffix (=Q/=R etc) is always uppercased; check/checkmate (+/#) is preserved as-is.
             if (/^[0oO]-[0oO]-[0oO]$/i.test(san)) {
                 san = 'O-O-O';
             } else if (/^[0oO]-[0oO]$/i.test(san)) {
                 san = 'O-O';
-            } else if (/^[nbrqk]/i.test(san)) {
-                // Piece moves: uppercase first letter, lowercase body, preserve =Q/=R/=B/=N suffix and +/#
+            } else {
+                // Strip trailing check/checkmate and promotion to preserve them exactly
                 const promoMatch = san.match(/=([qrbnQRBN])([+#]?)$/);
-                const suffix = promoMatch ? `=${promoMatch[1].toUpperCase()}${promoMatch[2]}` : san.match(/[+#]$/) ? san.slice(-1) : '';
-                const body = san.replace(/[+#]$/, '').replace(/=([qrbnQRBN])$/, '');
-                san = body.charAt(0).toUpperCase() + body.slice(1).toLowerCase() + suffix;
-            } else if (/^[a-h]/i.test(san)) {
-                // Pawn moves: lowercase file letter, preserve promotion suffix and +/#
-                const promoMatch = san.match(/=([qrbnQRBN])([+#]?)$/);
-                const suffix = promoMatch ? `=${promoMatch[1].toUpperCase()}${promoMatch[2]}` : san.match(/[+#]$/) ? san.slice(-1) : '';
-                const body = san.replace(/[+#]$/, '').replace(/=([qrbnQRBN])$/, '');
-                san = body.charAt(0).toLowerCase() + body.slice(1) + suffix;
+                const suffix = promoMatch
+                    ? `=${promoMatch[1].toUpperCase()}${promoMatch[2]}`
+                    : san.match(/[+#]$/) ? san.slice(-1) : '';
+                const body = promoMatch
+                    ? san.slice(0, san.lastIndexOf('='))
+                    : suffix ? san.slice(0, -1) : san;
+
+                if (/^[NBRQK]/.test(san) || /^[nrqk]/.test(san)) {
+                    // Piece move: uppercase first char, lowercase rest of body
+                    san = body.charAt(0).toUpperCase() + body.slice(1).toLowerCase() + suffix;
+                } else if (/^[a-h]/i.test(san)) {
+                    // Pawn move (files a-h, including lowercase 'b'): fully lowercase body
+                    san = body.toLowerCase() + suffix;
+                }
             }
             
             const moveObj = chess.move(san);
