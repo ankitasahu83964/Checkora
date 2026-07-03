@@ -208,6 +208,9 @@ global.Chess = class MockChess {
     if (moveStr === 'Bxc6+') return { from: 'b5', to: 'c6', promotion: undefined };
     if (moveStr === 'Nbd7') return { from: 'b8', to: 'd7', promotion: undefined };
     if (moveStr === 'Qh5+') return { from: 'd1', to: 'h5', promotion: undefined };
+    if (moveStr === 'b4') return { from: 'b2', to: 'b4', promotion: undefined };
+    if (moveStr === 'bxc5') return { from: 'b4', to: 'c5', promotion: undefined };
+    if (moveStr === 'exd5') return { from: 'e4', to: 'd5', promotion: undefined };
     
     return { from: 'a1', to: 'a2' };
   }
@@ -673,6 +676,7 @@ describe("SAN Quick Move Input", () => {
     // Should normalize to Nf3 and succeed
     expect(input.value).toBe('');
     const moveReqs = global.fetch.mock.calls.filter(c => c[0] && c[0].includes('/api/move/'));
+    expect(moveReqs.length).toBe(1);
     const body = JSON.parse(moveReqs[moveReqs.length - 1][1].body);
     // g1 -> f3: fr=7, fc=6, tr=5, tc=5
     expect(body.from_row).toBe(7);
@@ -690,12 +694,64 @@ describe("SAN Quick Move Input", () => {
     // Should normalize to e4 and succeed
     expect(input.value).toBe('');
     const moveReqs = global.fetch.mock.calls.filter(c => c[0] && c[0].includes('/api/move/'));
+    expect(moveReqs.length).toBe(1);
     const body = JSON.parse(moveReqs[moveReqs.length - 1][1].body);
     // e2 -> e4: fr=6, fc=4, tr=4, tc=4
     expect(body.from_row).toBe(6);
     expect(body.from_col).toBe(4);
     expect(body.to_row).toBe(4);
     expect(body.to_col).toBe(4);
+  });
+
+  it('b-file pawn move (b4) is not treated as Bishop move', async () => {
+    const input = document.getElementById("sanMoveInput");
+    input.value = "b4";
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await flushPromises();
+
+    expect(input.value).toBe('');
+    const moveReqs = global.fetch.mock.calls.filter(c => c[0] && c[0].includes('/api/move/'));
+    expect(moveReqs.length).toBe(1);
+    const body = JSON.parse(moveReqs[moveReqs.length - 1][1].body);
+    // b2 -> b4: fr=6, fc=1, tr=4, tc=1
+    expect(body.from_row).toBe(6);
+    expect(body.from_col).toBe(1);
+    expect(body.to_row).toBe(4);
+    expect(body.to_col).toBe(1);
+  });
+
+  it('b-file pawn capture (bxc5) is not treated as Bishop capture', async () => {
+    const input = document.getElementById("sanMoveInput");
+    input.value = "bxc5";
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await flushPromises();
+
+    expect(input.value).toBe('');
+    const moveReqs = global.fetch.mock.calls.filter(c => c[0] && c[0].includes('/api/move/'));
+    expect(moveReqs.length).toBe(1);
+    const body = JSON.parse(moveReqs[moveReqs.length - 1][1].body);
+    // b4 -> c5: fr=4, fc=1, tr=3, tc=2
+    expect(body.from_row).toBe(4);
+    expect(body.from_col).toBe(1);
+    expect(body.to_row).toBe(3);
+    expect(body.to_col).toBe(2);
+  });
+
+  it('fully-uppercase pawn capture (EXD5) is normalized to exd5', async () => {
+    const input = document.getElementById("sanMoveInput");
+    input.value = "EXD5";
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await flushPromises();
+
+    expect(input.value).toBe('');
+    const moveReqs = global.fetch.mock.calls.filter(c => c[0] && c[0].includes('/api/move/'));
+    expect(moveReqs.length).toBe(1);
+    const body = JSON.parse(moveReqs[moveReqs.length - 1][1].body);
+    // e4 -> d5: fr=4, fc=4, tr=3, tc=3
+    expect(body.from_row).toBe(4);
+    expect(body.from_col).toBe(4);
+    expect(body.to_row).toBe(3);
+    expect(body.to_col).toBe(3);
   });
 });
 
