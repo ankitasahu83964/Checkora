@@ -46,7 +46,10 @@ let userColor = "w"; // 'w' or 'b'
 let selectedSquare = null;
 let lastMoveHighlight = null;
 let opponentReplyTimeout = null;
+let hintHighlight = null;
+const hintButton = document.getElementById("get-hint-btn");
 const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+const activeTouches = {};
 
 const feedback = document.getElementById("trainer-feedback");
 const progress = document.getElementById("move-progress");
@@ -328,6 +331,11 @@ function makeUserMove(fromRow, fromCol, toRow, toCol) {
 }
 
 function handleSquareClick(row, col) {
+    if (hintHighlight) {
+        hintHighlight = null;
+        renderBoard();
+    }
+
     if (viewingMoveIndex !== currentMove) return;
 
     const isUserTurn = (userColor === "w" && currentMove % 2 === 0) || (userColor === "b" && currentMove % 2 === 1);
@@ -397,6 +405,110 @@ function handleDragOver(e) {
     e.dataTransfer.dropEffect = "move";
 }
 
+function handleTouchStart(e, row, col) {
+    if (viewingMoveIndex !== currentMove) return;
+
+    const isUserTurn = (userColor === "w" && currentMove % 2 === 0) || (userColor === "b" && currentMove % 2 === 1);
+    if (!isUserTurn) return;
+
+    const piece = boardState[row][col];
+    if (!piece || !piece.startsWith(userColor)) return;
+
+    // Get the touch point that started this event
+    const touch = e.changedTouches ? e.changedTouches[0] : null;
+    if (!touch) return;
+
+    // Prevent default scrolling/panning behavior on touch devices
+    e.preventDefault();
+
+    const img = e.currentTarget;
+    const identifier = touch.identifier;
+
+    const rect = img.getBoundingClientRect();
+    const touchOffsetX = rect.width / 2;
+    const touchOffsetY = rect.height / 2;
+
+    // Store drag state for this touch identifier
+    activeTouches[identifier] = {
+        img: img,
+        startRow: row,
+        startCol: col,
+        touchOffsetX: touchOffsetX,
+        touchOffsetY: touchOffsetY
+    };
+
+    // Store the identifier on the element to reference in move/end events
+    img.dataset.touchId = identifier;
+
+    // Transition image to fixed positioning for dragging
+    img.style.position = "fixed";
+    img.style.width = `${rect.width}px`;
+    img.style.height = `${rect.height}px`;
+    img.style.zIndex = "1000";
+    img.style.pointerEvents = "none"; // Crucial so document.elementFromPoint can hit the underlying squares
+
+    img.style.left = `${touch.clientX - touchOffsetX}px`;
+    img.style.top = `${touch.clientY - touchOffsetY}px`;
+}
+
+function handleTouchMove(e, img) {
+    const touchIdAttr = img.dataset.touchId;
+    if (touchIdAttr === undefined) return;
+    const touchId = parseInt(touchIdAttr, 10);
+    const touchState = activeTouches[touchId];
+    if (!touchState) return;
+    // Find the specific active touch point matching this identifier
+    const touch = e.touches ? (Array.from(e.touches).find(t => t.identifier === touchId) || 
+                               Array.from(e.changedTouches || []).find(t => t.identifier === touchId)) : null;
+    if (!touch) return;
+    e.preventDefault();
+    img.style.left = `${touch.clientX - touchState.touchOffsetX}px`;
+    img.style.top = `${touch.clientY - touchState.touchOffsetY}px`;
+}
+
+function handleTouchEnd(e, startRow, startCol) {
+    const img = e.currentTarget;
+    const touchIdAttr = img.dataset.touchId;
+    
+    try {
+        if (touchIdAttr === undefined) return;
+        const touchId = parseInt(touchIdAttr, 10);
+        const touchState = activeTouches[touchId];
+        if (!touchState) return;
+        // Prevent click events / default behavior
+        e.preventDefault();
+        // Clean up active touch tracking
+        delete activeTouches[touchId];
+        delete img.dataset.touchId;
+
+        // Do not commit moves from touchcancel
+        if (e.type === "touchcancel") {
+            return;
+        }
+
+        // Safely extract the corresponding touch point from changedTouches
+        const touch = e.changedTouches ? Array.from(e.changedTouches).find(t => t.identifier === touchId) : null;
+        if (touch) {
+            // Find the element under the touch coordinates
+            const element = document.elementFromPoint(touch.clientX, touch.clientY);
+            const square = element ? element.closest(".square") : null;
+            if (square) {
+                const targetRow = parseInt(square.dataset.row, 10);
+                const targetCol = parseInt(square.dataset.col, 10);
+                // Call move logic only if dropped on a different square
+                if (targetRow !== startRow || targetCol !== startCol) {
+                    makeUserMove(startRow, startCol, targetRow, targetCol);
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Touch end error:", err);
+    } finally {
+        // ALWAYS run renderBoard() to restore layout, even if an error is thrown
+        renderBoard();
+    }
+}
+
 function renderBoard() {
     if (!boardElement) return;
     boardElement.innerHTML = "";
@@ -423,6 +535,15 @@ function renderBoard() {
             )) {
                 square.classList.add(lastMoveHighlight.toRow === actualRow && lastMoveHighlight.toCol === actualCol ? "highlight-to" : "highlight-from");
             }
+            // Apply hint styles if a hint is active
+            if (hintHighlight) {
+                if (hintHighlight.fromRow === actualRow && hintHighlight.fromCol === actualCol) {
+                    square.classList.add("hint-from");
+                }
+                if (hintHighlight.toRow === actualRow && hintHighlight.toCol === actualCol) {
+                    square.classList.add("hint-to");
+                }
+            }
 
             const piece = boardState[actualRow][actualCol];
             if (piece) {
@@ -431,6 +552,10 @@ function renderBoard() {
                 img.alt = piece;
                 img.draggable = true;
                 img.addEventListener("dragstart", (e) => handleDragStart(e, actualRow, actualCol));
+                img.addEventListener("touchstart", (e) => handleTouchStart(e, actualRow, actualCol), { passive: false });
+                img.addEventListener("touchmove", (e) => handleTouchMove(e, img), { passive: false });
+                img.addEventListener("touchend", (e) => handleTouchEnd(e, actualRow, actualCol), { passive: false });
+                img.addEventListener("touchcancel", (e) => handleTouchEnd(e, actualRow, actualCol), { passive: false });
                 square.appendChild(img);
             }
 
@@ -448,6 +573,7 @@ function showMoveAt(index) {
 
     boardState = STARTING_BOARD_STATE.map(row => [...row]);
     lastMoveHighlight = null;
+    hintHighlight = null; // Clear hint highlight state
 
     for (let i = 0; i < index; i++) {
         const color = i % 2 === 0 ? "w" : "b";
@@ -482,6 +608,9 @@ function updateInputState() {
     if (checkButton) {
         checkButton.disabled = !isLatest || isCompleted;
     }
+    if (hintButton) {
+        hintButton.disabled = !isLatest || isCompleted;
+    }
 }
 
 function updateNavigationButtons() {
@@ -503,6 +632,7 @@ function resetGame() {
     viewingMoveIndex = 0;
     selectedSquare = null;
     lastMoveHighlight = null;
+    hintHighlight = null; // Clear hint highlight state
     if (opponentReplyTimeout) {
         clearTimeout(opponentReplyTimeout);
         opponentReplyTimeout = null;
@@ -548,6 +678,11 @@ if (playWhiteBtn && playBlackBtn) {
 
 // Support manual move text box validation in sync with the visual board
 function validateMove(move) {
+    if (hintHighlight) {
+        hintHighlight = null;
+        renderBoard();
+    }
+
     if (viewingMoveIndex !== currentMove) return false;
 
     const isUserTurn = (userColor === "w" && currentMove % 2 === 0) || (userColor === "b" && currentMove % 2 === 1);
@@ -675,6 +810,31 @@ if (themeSelect) {
     // Event listener for user theme changes
     themeSelect.addEventListener("change", (e) => {
         applyTheme(e.target.value);
+    });
+}
+
+    if (hintButton) {
+    hintButton.addEventListener("click", () => {
+        if (viewingMoveIndex !== currentMove) return;
+        if (currentMove >= OPENING_MOVES.length) return;
+
+        // Ensure it is the user's turn before showing a hint
+        const isUserTurn = (userColor === "w" && currentMove % 2 === 0) || (userColor === "b" && currentMove % 2 === 1);
+        if (!isUserTurn) return;
+
+        const expectedMove = OPENING_MOVES[currentMove];
+        const color = currentMove % 2 === 0 ? "w" : "b";
+        const moveParsed = parseSAN(expectedMove, color);
+
+        if (moveParsed) {
+            hintHighlight = {
+                fromRow: moveParsed.fromRow,
+                fromCol: moveParsed.fromCol,
+                toRow: moveParsed.toRow,
+                toCol: moveParsed.toCol
+            };
+            renderBoard();
+        }
     });
 }
 
