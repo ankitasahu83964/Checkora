@@ -207,14 +207,7 @@ def record_game_result(request, mode, winner, reason, player_color='white', move
     if user:
         with transaction.atomic():
             progress, _ = UserProgress.objects.select_for_update().get_or_create(user=user)
-            today = timezone.localdate()
-            if progress.last_played_date != today:
-                if progress.last_played_date == today - timedelta(days=1):
-                    progress.day_streak += 1
-                else:
-                    progress.day_streak = 1
-                progress.last_played_date = today
-                progress.save(update_fields=['day_streak', 'last_played_date'])
+            progress.update_streak()
 
     if user and mode == 'ai':
         update_player_rating(
