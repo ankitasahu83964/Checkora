@@ -3390,6 +3390,11 @@ body.blindfold-mode .capture-ring {
     color: #64748b;
 }
 
+.stepper-btn:focus-visible {
+    outline: 2px solid #f0c040;
+    outline-offset: 2px;
+}
+
 /* ── Active Move Sidebar Highlight ── */
 .moves-list .selected-move {
     background: rgba(240, 192, 64, 0.22) !important;
@@ -3417,7 +3422,7 @@ body.blindfold-mode .capture-ring {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 15px rgba(240, 192, 64, 0.35);
     z-index: 100;
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    animation: pulseResume 2s infinite ease-in-out;
+    animation: pulse-resume 2s infinite ease-in-out;
 }
 
 .resume-game-floating-btn:hover {
@@ -3435,7 +3440,7 @@ body.blindfold-mode .capture-ring {
     pointer-events: none;
 }
 
-@keyframes pulseResume {
+@keyframes pulse-resume {
     0%, 100% {
         box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 10px rgba(240, 192, 64, 0.3);
     }

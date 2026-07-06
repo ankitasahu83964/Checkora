@@ -720,6 +720,7 @@
     let aiThinking = false;
     let aiRequestSeq = 0; // Sequence token to cancel stale AI responses
     let analysisRequestSeq = 0; // Sequence token to cancel stale analysis responses
+    const DEFAULT_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
     let gameFens = [];
     let stepperIndex = 0;
     let viewingPastState = false;
@@ -2259,17 +2260,20 @@
     }
 
     function rebuildGameFens(moveHistory, startingFen) {
-    const tempChess = new window.Chess(startingFen);
-    const fens = [tempChess.fen()];
-    if (moveHistory && moveHistory.length > 0) {
-        for (let m of moveHistory) {
-            const res = tempChess.move(m.notation);
-            if (!res) break;
-            fens.push(tempChess.fen());
+        const tempChess = new window.Chess(startingFen || DEFAULT_START_FEN);
+        const fens = [tempChess.fen()];
+        if (moveHistory && moveHistory.length > 0) {
+            for (let m of moveHistory) {
+                const res = tempChess.move(m.notation);
+                if (!res) {
+                    fens.push(fens[fens.length - 1]);
+                    continue;
+                }
+                fens.push(tempChess.fen());
+            }
         }
+        return fens;
     }
-    return fens;
-}
 
 function renderStepperPosition(fen) {
     const position = fen.split(' ')[0];
@@ -2355,7 +2359,7 @@ function updateStepperUI() {
     }
 
     function updateMoves(history) {
-    const startingFen = localStorage.getItem('checkora_starting_fen') || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const startingFen = localStorage.getItem('checkora_starting_fen') || DEFAULT_START_FEN;
     gameFens = rebuildGameFens(history, startingFen);
 
     if (!viewingPastState) {
@@ -3519,6 +3523,9 @@ function updateStepperUI() {
         }
 
         replayMode = false;
+        viewingPastState = false;
+        stepperIndex = 0;
+        gameFens = [];
 
         if (autoReplayInterval) {
             clearInterval(autoReplayInterval);
@@ -3599,7 +3606,7 @@ function updateStepperUI() {
         if (fenValue) {
             localStorage.setItem('checkora_starting_fen', fenValue);
         } else {
-            localStorage.setItem('checkora_starting_fen', 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+            localStorage.setItem('checkora_starting_fen', DEFAULT_START_FEN);
         }
 
         if (fenValue) payload.fen = fenValue;
