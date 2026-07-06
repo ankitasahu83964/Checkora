@@ -600,7 +600,54 @@ body {
     flex-direction: column;
     width: calc(var(--square-size) * 8 + var(--board-border) * 2);
     box-sizing: border-box;
+    position: relative;
 }
+
+/* ================= START COUNTDOWN OVERLAY ================= */
+.chessboard.countdown-active .square {
+    pointer-events: none;
+}
+
+.countdown-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 8, 16, 0.82);
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.countdown-overlay.active {
+    display: flex;
+}
+
+.countdown-number {
+    font-family: Cinzel, serif;
+    font-size: clamp(3rem, 12vw, 6rem);
+    font-weight: 700;
+    color: #f0c040;
+    text-shadow: 0 0 20px rgba(240, 192, 64, 0.6);
+    animation: countdown-pop 1s ease-in-out;
+}
+
+@keyframes countdown-pop {
+    0% {
+        transform: scale(0.4);
+        opacity: 0;
+    }
+    30% {
+        transform: scale(1.15);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
 
 .ranks {
     display: flex;
