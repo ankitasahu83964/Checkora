@@ -598,6 +598,8 @@
     const shareModal = document.getElementById('shareModal');
     const rulebookModal = document.getElementById('rulebookModal');
     const boardEl = document.getElementById('board');
+    const countdownOverlay = document.getElementById('countdownOverlay');
+    const countdownNumberEl = document.getElementById('countdownNumber');
     const turnEl = document.getElementById('turnBadge');
     const statusEl = document.getElementById('statusBar');
     const movesEl = document.getElementById('movesList');
@@ -3199,6 +3201,31 @@
         boardEl.style.pointerEvents = '';
     }
 }
+            function runStartCountdown(onComplete) {
+                if (!countdownOverlay || !countdownNumberEl) {
+                    onComplete();
+                    return;
+                }
+
+                const sequence = ['3', '2', '1', 'Go!'];
+                let idx = 0;
+
+                boardEl.classList.add('countdown-active');
+                countdownNumberEl.textContent = sequence[idx];
+                countdownOverlay.classList.add('active');
+
+                const countdownInterval = setInterval(() => {
+                    idx++;
+                    if (idx < sequence.length) {
+                        countdownNumberEl.textContent = sequence[idx];
+                    } else {
+                        clearInterval(countdownInterval);
+                        countdownOverlay.classList.remove('active');
+                        boardEl.classList.remove('countdown-active');
+                        onComplete();
+                    }
+                }, 1000);
+            }
             function startTimer() {
                 clearInterval(timerInterval);
                 timerInterval = setInterval(() => {
@@ -3546,9 +3573,16 @@
         paused = false;
         updatePauseUI();
 
-        // Auto-trigger AI if it's their turn
-        if (!isPuzzle && gameMode === 'ai' && turn !== playerColor) {
-            queueAIMoveIfNeeded();
+        if (!isPuzzle) {
+            // Hold the clocks and lock the board until the countdown finishes
+            clearInterval(timerInterval);
+            runStartCountdown(() => {
+                startTimer();
+                // Auto-trigger AI if it's their turn
+                if (gameMode === 'ai' && turn !== playerColor) {
+                    queueAIMoveIfNeeded();
+                }
+            });
         }
 
         return true;
