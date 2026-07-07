@@ -2055,15 +2055,21 @@
                         predSuggestedMove.appendChild(document.createTextNode(` ${formatEval(mv.eval)}`));
 
                         predResponsesList.textContent = '';
-                        data.ai_move.predicted_responses.forEach((resp, index) => {
+                        if (data.ai_move.predicted_responses.length === 0) {
                             const li = document.createElement('li');
-                            const respStrong = document.createElement('strong');
-                            respStrong.textContent = `${index + 1}. ${resp.notation}`;
-                            li.appendChild(respStrong);
-                            li.appendChild(document.createTextNode(` ${formatEval(resp.eval)}`));
-                            li.style.marginBottom = '5px';
+                            li.textContent = 'No opponent response available. The position may be terminal.';
                             predResponsesList.appendChild(li);
-                        });
+                        } else {
+                            data.ai_move.predicted_responses.forEach((resp, index) => {
+                                const li = document.createElement('li');
+                                const respStrong = document.createElement('strong');
+                                respStrong.textContent = `${index + 1}. ${resp.notation}`;
+                                li.appendChild(respStrong);
+                                li.appendChild(document.createTextNode(` ${formatEval(resp.eval)}`));
+                                li.style.marginBottom = '5px';
+                                predResponsesList.appendChild(li);
+                            });
+                        }
                         
                         predPanel.style.display = 'block';
                     }
