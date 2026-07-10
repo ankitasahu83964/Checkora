@@ -4228,6 +4228,7 @@ def apply_discussion_sort(queryset, sort_by):
 
 def forum_list(request):
     sort_by = request.GET.get("sort", "newest")
+    page_number = request.GET.get("page", 1)
 
     discussions = Discussion.objects.select_related("user").prefetch_related("replies")
 
@@ -4236,6 +4237,10 @@ def forum_list(request):
     bookmarked_ids = set()
 
     discussions = apply_discussion_sort(discussions, sort_by)
+    
+    from django.core.paginator import Paginator
+    paginator = Paginator(discussions, 20)
+    page_obj = paginator.get_page(page_number)
 
     if request.user.is_authenticated:
         user_discussions = (
@@ -4271,6 +4276,7 @@ def forum_list(request):
         request,
         "game/forum_list.html",
         {
+            "page_obj": page_obj,
             "discussions": discussions,
             "user_discussions": user_discussions,
             "bookmarked_discussions": bookmarked_discussions,
