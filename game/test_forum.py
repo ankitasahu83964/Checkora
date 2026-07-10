@@ -59,6 +59,7 @@ class ForumPaginationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         
         page_obj = response.context["page_obj"]
+        self.assertEqual(page_obj.number, 2)
         self.assertEqual(response.context["sort_by"], "oldest")
         
         html = response.content.decode("utf-8")
