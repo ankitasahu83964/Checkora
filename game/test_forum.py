@@ -10,15 +10,12 @@ class ForumPaginationTests(TestCase):
         self.user = User.objects.create_user(username="testuser", password="password")
         
         # Create 22 discussions to test pagination boundaries
-        discussions = [
-            Discussion(
+        for i in range(22):
+            Discussion.objects.create(
                 user=self.user,
                 title=f"Test Discussion {i}",
                 content=f"Content for test discussion {i}"
             )
-            for i in range(22)
-        ]
-        Discussion.objects.bulk_create(discussions)
         self.forum_url = reverse("forum")
 
     def test_forum_pagination_first_page(self):

@@ -2230,7 +2230,7 @@ class TimeControlIncrementTest(TestCase):
     """Test flexible time control and increment logic."""
 
     @mock.patch('time.time', return_value=1000.0)
-    def test_increment_applied_after_move(self, mock_time):
+    def test_increment_applied_after_move(self, _mock_time):
         game = ChessGame(time_limit=600, increment=5)
         self.assertEqual(game.increment, 5)
         self.assertEqual(game.white_time, 600)

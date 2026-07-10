@@ -26,7 +26,7 @@ from django.utils.http import (
     urlsafe_base64_encode,
     urlsafe_base64_decode
 )
-
+from django.core.paginator import Paginator
 from django.utils.encoding import (
     force_bytes,
     force_str
@@ -4209,22 +4209,23 @@ def apply_discussion_sort(queryset, sort_by):
     )
 
     if sort_by == "oldest":
-        return queryset.order_by("created_at")
+        return queryset.order_by("created_at", "-id")
 
     if sort_by == "most_replies":
-        return queryset.order_by("-reply_count", "-created_at")
+        return queryset.order_by("-reply_count", "-created_at", "-id")
 
     if sort_by == "most_bookmarked":
-        return queryset.order_by("-bookmark_count", "-created_at")
+        return queryset.order_by("-bookmark_count", "-created_at", "-id")
 
     if sort_by == "recently_active":
         return queryset.order_by(
             F("last_reply_at").desc(nulls_last=True),
             "-updated_at",
             "-created_at",
+            "-id"
         )
 
-    return queryset.order_by("-created_at")
+    return queryset.order_by("-created_at", "-id")
 
 def forum_list(request):
     sort_by = request.GET.get("sort", "newest")
@@ -4238,7 +4239,6 @@ def forum_list(request):
 
     discussions = apply_discussion_sort(discussions, sort_by)
     
-    from django.core.paginator import Paginator
     paginator = Paginator(discussions, 20)
     page_obj = paginator.get_page(page_number)
 
