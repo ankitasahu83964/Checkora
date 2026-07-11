@@ -1634,15 +1634,23 @@
             const fromSquare = getSquareLabel(r, c); // e.g. "e2"
             const moves = chess.moves({ square: fromSquare, verbose: true });
             if (!moves) return null;
-            return moves.map(m => {
-                const { row, col } = squareLabelToRowCol(m.to);
-                return {
-                    row,
-                    col,
-                    is_capture:   m.captured !== undefined,
-                    is_promotion: m.promotion !== undefined,
-                };
-            });
+
+            const seen = new Set();
+            return moves
+                .filter(m => {
+                    if (seen.has(m.to)) return false;
+                    seen.add(m.to);
+                    return true;
+                })
+                .map(m => {
+                    const { row, col } = squareLabelToRowCol(m.to);
+                    return {
+                        row,
+                        col,
+                        is_capture:   m.captured !== undefined,
+                        is_promotion: m.promotion !== undefined,
+                    };
+                });
         } catch (e) {
             // Unexpected chess.js error — caller will fall back to the API.
             console.warn('computeLegalMovesClient error:', e);

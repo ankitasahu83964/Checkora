@@ -236,6 +236,9 @@ global.Chess = class MockChess {
       // Simulate a pawn about to promote
       return [
         { from: 'e7', to: 'e8', piece: 'p', captured: undefined, promotion: 'q' },
+        { from: 'e7', to: 'e8', piece: 'p', captured: undefined, promotion: 'r' },
+        { from: 'e7', to: 'e8', piece: 'p', captured: undefined, promotion: 'b' },
+        { from: 'e7', to: 'e8', piece: 'p', captured: undefined, promotion: 'n' },
       ];
     }
     return [];
@@ -833,12 +836,15 @@ describe("Client-side legal move computation (Issue #1445)", () => {
       expect(result[0].is_promotion).toBe(false);
     });
 
-    it('marks is_promotion=true when promotion field is present', () => {
+    it('marks is_promotion=true when promotion field is present and deduplicates promotion moves', () => {
       // e7 pawn promoting per MockChess stub
       const result = computeLegalMovesClient(1, 4); // e7
       expect(result).not.toBeNull();
+      // Even though MockChess returns 4 promotion moves (q, r, b, n), they are deduplicated by destination
       expect(result.length).toBe(1);
       expect(result[0].is_promotion).toBe(true);
+      expect(result[0].row).toBe(0); // e8 -> row 0
+      expect(result[0].col).toBe(4); // e8 -> col 4
     });
 
     it('returns null when window.Chess is unavailable', () => {
