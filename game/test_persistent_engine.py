@@ -1,4 +1,5 @@
 import os
+import time
 import tempfile
 from unittest import mock
 from django.test import TestCase
@@ -176,3 +177,51 @@ class PersistentEngineTest(TestCase):
             # Verify server shut down and PID file removed
             self.assertFalse(os.path.exists(pid_path),
                              "PID file should be deleted after shutdown")
+
+    def test_stale_lock_cleanup(self):
+        """Test that a stale lock file is automatically unlinked."""
+        game = ChessGame()
+        lock_path = os.path.join(tempfile.gettempdir(),
+                                 f'checkora_engine_{game.game_id}.lock')
+        self.temp_files_to_clean.append(lock_path)
+
+        # Create a stale lock file (simulate old creation time)
+        with open(lock_path, 'w') as f:
+            f.write("99999")
+
+        # Backdate the modification time of the lock file to 10 seconds ago
+        past_time = time.time() - 10.0
+        os.utime(lock_path, (past_time, past_time))
+
+        # Setup mock Popen and Client to check that it proceeds normally
+        with mock.patch('subprocess.Popen') as mock_popen:
+            mock_proc = mock.MagicMock()
+            mock_popen.return_value = mock_proc
+
+            def popen_side_effect(*args, **kwargs):
+                port_path = os.path.join(
+                    tempfile.gettempdir(),
+                    f'checkora_engine_{game.game_id}.port'
+                )
+                with open(port_path, 'w') as f:
+                    f.write("9999")
+                return mock_proc
+
+            mock_popen.side_effect = popen_side_effect
+
+            mock_client_instance = mock.MagicMock()
+            mock_client_instance.recv.return_value = "STATUS OK"
+
+            with mock.patch('multiprocessing.connection.Client',
+                            side_effect=[
+                                Exception("failed"),
+                                mock_client_instance
+                            ]) as mock_client:
+
+                resp = game._call_engine("STATUS")
+                self.assertEqual(resp, "STATUS OK")
+
+                # The stale lock file should have been deleted
+                self.assertFalse(os.path.exists(lock_path),
+                                 "Stale lock file should be deleted")
+                self.assertEqual(mock_client.call_count, 2)

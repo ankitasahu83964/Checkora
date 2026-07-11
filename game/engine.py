@@ -457,6 +457,14 @@ DP cache is intentionally excluded to save cookie space."""
                 pass
 
         if not conn:
+            # Check for stale lock file and clean it up (5.0s TTL)
+            if os.path.exists(lock_path):
+                try:
+                    if time.time() - os.path.getmtime(lock_path) > 5.0:
+                        os.unlink(lock_path)
+                except OSError:
+                    pass
+
             # Connection failed or not started. Attempt to acquire spawn lock.
             lock_acquired = False
             try:
