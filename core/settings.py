@@ -182,12 +182,45 @@ ANALYZE_GAME_USER_MAX_REQUESTS = _positive_int_env('ANALYZE_GAME_USER_MAX_REQUES
 # Max requests that can originate from a single IP address in the time window
 ANALYZE_GAME_IP_MAX_REQUESTS = _positive_int_env('ANALYZE_GAME_IP_MAX_REQUESTS', 20)
 
+# AI Move Rate Limiting (Issue #1625)
+# Configures the rate limits for the ai_move endpoint (minimax engine calls).
+# Window duration for tracking AI move requests
+AI_MOVE_RATE_WINDOW_SECONDS = _positive_int_env('AI_MOVE_RATE_WINDOW_SECONDS', 60)
+# Max AI move requests a single user/session can make in the time window
+AI_MOVE_USER_MAX_REQUESTS = _positive_int_env('AI_MOVE_USER_MAX_REQUESTS', 120)
+# Max AI move requests that can originate from a single IP address in the time window
+AI_MOVE_IP_MAX_REQUESTS = _positive_int_env('AI_MOVE_IP_MAX_REQUESTS', 240)
+
 # Rate limiting for opening lookup
 OPENING_RATE_LIMIT_WINDOW_SECONDS = _positive_int_env(
     'OPENING_RATE_LIMIT_WINDOW_SECONDS', 60
 )
 OPENING_RATE_LIMIT_MAX_REQUESTS = _positive_int_env(
     'OPENING_RATE_LIMIT_MAX_REQUESTS', 60
+)
+
+# Forum Rate Limiting
+
+# Discussion creation rate limit
+FORUM_DISCUSSION_RATE_WINDOW_SECONDS = _positive_int_env(
+    'FORUM_DISCUSSION_RATE_WINDOW_SECONDS',
+    86400  # 24 hours
+)
+
+FORUM_DISCUSSION_MAX_REQUESTS = _positive_int_env(
+    'FORUM_DISCUSSION_MAX_REQUESTS',
+    1
+)
+
+# Reply posting rate limit
+FORUM_REPLY_RATE_WINDOW_SECONDS = _positive_int_env(
+    'FORUM_REPLY_RATE_WINDOW_SECONDS',
+    60  # 1 minute
+)
+
+FORUM_REPLY_MAX_REQUESTS = _positive_int_env(
+    'FORUM_REPLY_MAX_REQUESTS',
+    10
 )
 
 # Static files (CSS, JavaScript, Images)

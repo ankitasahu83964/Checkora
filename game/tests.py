@@ -11,6 +11,8 @@ from game.models import (
     ActiveGame,
     OpeningProgress,
     UserProgress,
+    Discussion,
+    DiscussionBookmark,
 )
 
 from django.conf import settings
@@ -88,7 +90,7 @@ class EnginePathResolutionTest(SimpleTestCase):
             self.assertEqual(ChessGame._resolve_engine_path(), candidates[2])
             self.assertEqual(
                 ChessGame._build_engine_command(candidates[2]),
-                [sys.executable, candidates[2]],
+                [sys.executable, '-u', candidates[2]],
             )
 
 class BoardViewTest(TestCase):
@@ -406,6 +408,74 @@ class PasswordResetRateLimitTest(TestCase):
             REMOTE_ADDR='127.0.0.1',
         )
         self.assertEqual(view._client_ip(request), '203.0.113.195')
+
+    def test_password_reset_public_responses_are_indistinguishable(self):
+        """Verify that unknown, single-account, and multi-account submissions
+
+        produce identical public-facing responses (status, redirects, and HTML content)
+        while sending different emails privately.
+        """
+        # Case 1: Unknown email
+        cache.clear()
+        mail.outbox = []
+        response_unknown = self.client.post(
+            self.reset_url,
+            data={'email': 'unknown@example.com'},
+            follow=True,
+        )
+        self.assertEqual(len(mail.outbox), 0)
+
+        # Case 2: Single eligible account
+        cache.clear()
+        mail.outbox = []
+        response_single = self.client.post(
+            self.reset_url,
+            data={'email': 'reset@example.com'},
+            follow=True,
+        )
+        self.assertEqual(len(mail.outbox), 1)
+
+        # Case 3: Multiple eligible accounts sharing the email
+        cache.clear()
+        mail.outbox = []
+        User.objects.create_user(
+            username='resetplayer2',
+            email='reset@example.com',
+            password='StrongPass1234!',  # noqa: S106
+        )
+        response_multi = self.client.post(
+            self.reset_url,
+            data={'email': 'reset@example.com'},
+            follow=True,
+        )
+        self.assertEqual(len(mail.outbox), 2)
+
+        # 1. Compare status codes (all should be 200 after following redirects)
+        self.assertEqual(response_unknown.status_code, 200)
+        self.assertEqual(response_single.status_code, 200)
+        self.assertEqual(response_multi.status_code, 200)
+
+        # 2. Compare redirect chains
+        self.assertEqual(response_unknown.redirect_chain, response_single.redirect_chain)
+        self.assertEqual(response_single.redirect_chain, response_multi.redirect_chain)
+        self.assertEqual(response_unknown.redirect_chain, [(self.done_url, 302)])
+
+        # 3. Compare final HTML content (must be identical)
+        self.assertEqual(response_unknown.content, response_single.content)
+        self.assertEqual(response_single.content, response_multi.content)
+
+        # 4. Verify no account identifiers or selection UIs are leaked in the public HTML
+        for response in [response_unknown, response_single, response_multi]:
+            self.assertNotContains(response, 'Select Your Account')
+            self.assertNotContains(response, 'resetplayer')
+            self.assertNotContains(response, 'resetplayer2')
+            self.assertNotContains(response, 'usernames')
+
+    def test_account_selection_endpoint_is_removed(self):
+        # Verify that the account selection endpoint returns 404
+        url = '/password-reset-account-selection/'
+        response = self.client.get(url, {'email': 'reset@example.com'})
+        self.assertEqual(response.status_code, 404)
 
 
 class MoveValidationTest(TestCase):
@@ -1076,6 +1146,149 @@ class AIMoveTest(TestCase):
         self.assertIn('to_row', data['ai_move'])
         self.assertIn('to_col', data['ai_move'])
 
+    def test_ai_aborts_if_game_paused(self):
+        self.client.post(
+            '/api/new-game/', data=json.dumps({'mode': 'ai'}),
+            content_type='application/json'
+        )
+
+        # Pause the game
+        self.client.post(
+            '/api/pause/', data=json.dumps({'pause': True}),
+            content_type='application/json'
+        )
+
+        state_before = self.client.get('/api/state/').json()
+
+        # Try to make AI move
+        r = self.client.post('/api/ai-move/', content_type='application/json')
+        self.assertEqual(r.status_code, 400)
+
+        data = r.json()
+        self.assertFalse(data['valid'])
+        self.assertEqual(data['message'], 'Game is paused.')
+
+        state_after = self.client.get('/api/state/').json()
+        self.assertEqual(state_before['board'], state_after['board'])
+        self.assertEqual(state_before['current_turn'], state_after['current_turn'])
+        self.assertEqual(state_before['move_history'], state_after['move_history'])
+
+    def test_ai_succeeds_after_resume(self):
+        self.client.post(
+            '/api/new-game/', data=json.dumps({'mode': 'ai'}),
+            content_type='application/json'
+        )
+
+        # Pause the game
+        self.client.post(
+            '/api/pause/', data=json.dumps({'pause': True}),
+            content_type='application/json'
+        )
+
+        # Resume the game
+        self.client.post(
+            '/api/pause/', data=json.dumps({'pause': False}),
+            content_type='application/json'
+        )
+
+        # Try to make AI move
+        r = self.client.post('/api/ai-move/', content_type='application/json')
+        data = r.json()
+
+        self.assertTrue(data['valid'])
+        self.assertEqual(data['current_turn'], 'black')
+        self.assertIn('from_row', data['ai_move'])
+        self.assertIn('from_col', data['ai_move'])
+        self.assertIn('to_row', data['ai_move'])
+        self.assertIn('to_col', data['ai_move'])
+
+    @mock.patch('game.engine.ChessGame.get_ai_move')
+    def test_ai_aborts_if_paused_during_calculation(self, mock_get_ai_move):
+        self.client.post(
+            '/api/new-game/', data=json.dumps({'mode': 'ai'}),
+            content_type='application/json'
+        )
+
+        def side_effect(depth=None):
+            # simulate concurrent pause
+            from importlib import import_module
+            from django.conf import settings
+            engine = import_module(settings.SESSION_ENGINE)
+            store = engine.SessionStore(session_key=self.client.session.session_key)
+            game_data = store.get('game', {})
+            game_data['paused'] = True
+            store['game'] = game_data
+            store.save()
+            return {'from_row': 1, 'from_col': 4, 'to_row': 3, 'to_col': 4}
+
+        mock_get_ai_move.side_effect = side_effect
+
+        state_before = self.client.get('/api/state/').json()
+
+        # Try to make AI move
+        r = self.client.post('/api/ai-move/', content_type='application/json')
+        self.assertEqual(r.status_code, 400)
+
+        data = r.json()
+        self.assertFalse(data['valid'])
+        self.assertEqual(data['message'], 'Game is paused.')
+
+        state_after = self.client.get('/api/state/').json()
+        self.assertEqual(state_before['board'], state_after['board'])
+        self.assertEqual(state_before['current_turn'], state_after['current_turn'])
+        self.assertEqual(state_before['move_history'], state_after['move_history'])
+
+    def test_ai_aborts_on_session_read_error(self):
+        self.client.post(
+            '/api/new-game/', data=json.dumps({'mode': 'ai'}),
+            content_type='application/json'
+        )
+        with mock.patch('game.views.import_module') as mock_import:
+            class MockEngine:
+                class SessionStore:
+                    def __init__(self, *args, **kwargs):
+                        raise Exception("DB offline")
+            mock_import.return_value = MockEngine
+
+            r = self.client.post('/api/ai-move/', content_type='application/json')
+            self.assertEqual(r.status_code, 500)
+
+            data = r.json()
+            self.assertFalse(data['valid'])
+            self.assertEqual(data['message'], 'Internal error verifying game state.')
+
+    @mock.patch('game.engine.ChessGame.make_move')
+    def test_ai_preserves_concurrent_pause_during_save(self, mock_make_move):
+        self.client.post(
+            '/api/new-game/', data=json.dumps({'mode': 'ai'}),
+            content_type='application/json'
+        )
+
+        def side_effect(*args, **kwargs):
+            # simulate concurrent pause occurring exactly during make_move
+            from importlib import import_module
+            from django.conf import settings
+            engine = import_module(settings.SESSION_ENGINE)
+            store = engine.SessionStore(session_key=self.client.session.session_key)
+            game_data = store.get('game', {})
+            game_data['paused'] = True
+            store['game'] = game_data
+            store.save()
+            return True, "Mock move", [], "active"
+
+        mock_make_move.side_effect = side_effect
+
+        r = self.client.post('/api/ai-move/', content_type='application/json')
+        self.assertEqual(r.status_code, 200)
+
+        # The backend should have preserved the authoritative paused state (True)
+        # despite the local game object having paused=False
+        from importlib import import_module
+        from django.conf import settings
+        engine = import_module(settings.SESSION_ENGINE)
+        store = engine.SessionStore(session_key=self.client.session.session_key)
+        self.assertTrue(store.get('game', {}).get('paused'))
+
 
 class OpeningBookTest(SimpleTestCase):
     """Unit tests for the opening-book integration in ChessGame."""
@@ -1323,7 +1536,7 @@ class AnalyzeGameTest(TestCase):
             instance.board = [['' for _ in range(8)] for _ in range(8)]
             instance.board[1][3] = 'q'  # Queen at target square
             instance.board[6][4] = 'P'  # Place moving pawn
-            
+
             # Mock get_valid_moves and _notation so the inner loop finds it
             instance.get_valid_moves.return_value = [{'row': 4, 'col': 4}]
             instance._notation.return_value = 'e4'
@@ -1334,15 +1547,15 @@ class AnalyzeGameTest(TestCase):
             instance._serialize_ep.return_value = '-'
 
             instance.get_ai_move = mock_ai
-            
+
             payload = {"moves": ["e4"]}
             r = self.client.post('/api/analyze-game/', data=json.dumps(payload), content_type='application/json')
-            
+
             self.assertEqual(r.status_code, 200)
             data = r.json()
 
             self.assertEqual(len(data['move_analysis_details']), 1)
-            
+
             # White played e4 but engine wanted to capture a Queen. Blunder!
             white_analysis = data['move_analysis_details'][0]
             self.assertEqual(white_analysis['played'], 'e4')
@@ -1355,7 +1568,7 @@ class AnalyzeGameTest(TestCase):
         mock_ai.side_effect = Exception("Engine timeout")
 
         payload = {"moves": ["e4"]}
-        
+
         with mock.patch('game.views.ChessGame') as MockGame:
             instance = MockGame.return_value
             instance.board = [['' for _ in range(8)] for _ in range(8)]
@@ -1370,7 +1583,7 @@ class AnalyzeGameTest(TestCase):
             instance.get_ai_move = mock_ai
 
             r = self.client.post('/api/analyze-game/', data=json.dumps(payload), content_type='application/json')
-            
+
             self.assertEqual(r.status_code, 200)
             self.assertEqual(r.json()['accuracy'], 100) # Defaults to 100% accurate if engine fails
 
@@ -2086,7 +2299,8 @@ class InsufficientMaterialDrawTest(TestCase):
 class TimeControlIncrementTest(TestCase):
     """Test flexible time control and increment logic."""
 
-    def test_increment_applied_after_move(self):
+    @mock.patch('time.time', return_value=1000.0)
+    def test_increment_applied_after_move(self, _mock_time):
         game = ChessGame(time_limit=600, increment=5)
         self.assertEqual(game.increment, 5)
         self.assertEqual(game.white_time, 600)
@@ -2129,6 +2343,54 @@ class TimeControlIncrementTest(TestCase):
         self.assertIsNotNone(game_dict)
         self.assertEqual(game_dict['increment'], 3)
         self.assertEqual(game_dict['white_time'], 300)
+
+    def test_update_clock_sub_second_call_deducts_nothing(self):
+        """A single call with < 1s elapsed must deduct 0 seconds."""
+        game = ChessGame(time_limit=600)
+        game.last_ts = 1000.0
+        game.white_time = 600
+        game.current_turn = 'white'
+        game.paused = False
+
+        with mock.patch('game.engine.time.time', return_value=1000.6):
+            game.update_clock()
+
+        self.assertEqual(game.white_time, 600)
+        self.assertEqual(game.last_ts, 1000.0)
+
+    def test_update_clock_remainder_accumulates_across_calls(self):
+        """Sub-second remainders must accumulate; 0.6+0.6 = 1.2 -> deduct 1."""
+        game = ChessGame(time_limit=600)
+        game.last_ts = 1000.0
+        game.white_time = 600
+        game.current_turn = 'white'
+        game.paused = False
+
+        with mock.patch('game.engine.time.time', return_value=1000.6):
+            game.update_clock()
+        self.assertEqual(game.white_time, 600)
+        self.assertEqual(game.last_ts, 1000.0)
+
+        with mock.patch('game.engine.time.time', return_value=1001.2):
+            game.update_clock()
+        self.assertEqual(game.white_time, 599)
+        self.assertEqual(game.last_ts, 1001.0)
+
+    def test_update_clock_high_frequency_no_time_leak(self):
+        """Repeated 0.4s polls must deduct only floor(total elapsed) seconds."""
+        game = ChessGame(time_limit=600)
+        game.last_ts = 0.0
+        game.white_time = 600
+        game.current_turn = 'white'
+        game.paused = False
+
+        for i in range(1, 11):
+            with mock.patch('game.engine.time.time', return_value=i * 0.4):
+                game.update_clock()
+
+        total_elapsed = 10 * 0.4  # 4.0 s
+        self.assertEqual(game.white_time, 600 - int(total_elapsed))
+        self.assertEqual(game.last_ts, float(int(total_elapsed)))
 
 
 class GameResultMoveHistoryTest(TestCase):
@@ -3450,15 +3712,15 @@ class AvatarUploadFormTest(TestCase):
         from PIL import Image
         import io
         from django.core.files.uploadedfile import SimpleUploadedFile
-        
+
         # Dynamically generate a valid 10x10 JPEG
         img_buffer = io.BytesIO()
         Image.new('RGB', (10, 10), color='red').save(img_buffer, 'JPEG')
         img_buffer.seek(0)
-        
+
         file = SimpleUploadedFile('photo.jpg', img_buffer.read(), 'image/jpeg')
         file.content_type = 'image/jpeg'
-        
+
         form = AvatarUploadForm()
         form.cleaned_data = {'avatar': file}
         cleaned = form.clean_avatar()
@@ -3500,15 +3762,15 @@ class AvatarUploadFormTest(TestCase):
         from PIL import Image
         import io
         from django.core.files.uploadedfile import SimpleUploadedFile
-        
+
         # Dynamically generate a valid WEBP
         img_buffer = io.BytesIO()
         Image.new('RGB', (10, 10), color='blue').save(img_buffer, 'WEBP')
         img_buffer.seek(0)
-        
+
         webp_file = SimpleUploadedFile('img.webp', img_buffer.read(), 'image/webp')
         webp_file.content_type = 'image/webp'
-        
+
         form = AvatarUploadForm()
         form.cleaned_data = {'avatar': webp_file}
         result = form.clean_avatar()
@@ -3626,7 +3888,7 @@ class GameResultRatingTest(TestCase):
         self.assertEqual(rating.games_played, 1)
         self.assertEqual(rating.wins, 1)
         self.assertTrue(self.UserAchievement.objects.filter(user=self.user).exists())
-        
+
         self.assertEqual(self.GameResult.objects.count(), 1)
         res = self.GameResult.objects.first()
         self.assertEqual(res.mode, 'ai')
@@ -3727,3 +3989,58 @@ class OpeningStatsTests(TestCase):
 
         # XP should not increase after the second completion
         self.assertEqual(user_progress.xp, 75)
+
+
+class DiscussionBookmarkRedirectTests(TestCase):
+    """Tests for safe redirection in toggle_discussion_bookmark view."""
+
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            username='bookmark_user',
+            password='TestPass123!',
+            email='bookmark@example.com'
+        )
+        self.client.login(username='bookmark_user', password='TestPass123!')
+        self.discussion = Discussion.objects.create(
+            user=self.user,
+            title='Test Discussion',
+            content='This is a test discussion'
+        )
+        self.url = reverse('toggle_discussion_bookmark', kwargs={'discussion_id': self.discussion.id})
+
+    def test_safe_local_path_next(self):
+        response = self.client.post(self.url, {'next': '/forum/'})
+        self.assertRedirects(response, '/forum/', fetch_redirect_response=False)
+
+    def test_safe_same_host_url_next(self):
+        response = self.client.post(self.url, {'next': 'http://testserver/forum/'})
+        self.assertRedirects(response, 'http://testserver/forum/', fetch_redirect_response=False)
+
+    def test_unsafe_external_url_next_falls_back_to_forum(self):
+        response = self.client.post(self.url, {'next': 'http://evil.com/external'})
+        self.assertRedirects(response, reverse('forum'), fetch_redirect_response=False)
+
+    def test_unsafe_protocol_relative_url_next_falls_back_to_forum(self):
+        response = self.client.post(self.url, {'next': '//evil.com/external'})
+        self.assertRedirects(response, reverse('forum'), fetch_redirect_response=False)
+
+    def test_safe_referer_fallback(self):
+        response = self.client.post(self.url, HTTP_REFERER='http://testserver/forum/1/')
+        self.assertRedirects(response, 'http://testserver/forum/1/', fetch_redirect_response=False)
+
+    def test_unsafe_referer_fallback_redirects_to_forum(self):
+        response = self.client.post(self.url, HTTP_REFERER='http://evil.com/external')
+        self.assertRedirects(response, reverse('forum'), fetch_redirect_response=False)
+
+    def test_unsafe_next_and_safe_referer_falls_back_to_referer(self):
+        response = self.client.post(
+            self.url,
+            {'next': 'http://evil.com/external'},
+            HTTP_REFERER='http://testserver/forum/1/'
+        )
+        self.assertRedirects(response, 'http://testserver/forum/1/', fetch_redirect_response=False)
+
+    def test_no_next_and_no_referer_fallback(self):
+        response = self.client.post(self.url)
+        self.assertRedirects(response, reverse('forum'), fetch_redirect_response=False)

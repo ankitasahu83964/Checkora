@@ -100,6 +100,26 @@ class UserProgress(models.Model):
         db_index=True
     )
 
+    day_streak = models.PositiveIntegerField(
+        default=0
+    )
+
+    last_played_date = models.DateField(
+        null=True,
+        blank=True
+    )
+
+    def update_streak(self):
+        """Update day streak based on last played date."""
+        today = timezone.localdate()
+        if self.last_played_date != today:
+            if self.last_played_date == today - timedelta(days=1):
+                self.day_streak += 1
+            else:
+                self.day_streak = 1
+            self.last_played_date = today
+            self.save(update_fields=['day_streak', 'last_played_date'])
+
     def __str__(self) -> str:
         return (
             f"{self.user.username} "
@@ -581,6 +601,9 @@ class Reply(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+        ]
 
     def clean(self):
         super().clean()
@@ -615,6 +638,9 @@ class DiscussionBookmark(models.Model):
     class Meta:
         unique_together = ("user", "discussion")
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+        ]
 
     def __str__(self):
         return f"{self.user.username} bookmarked {self.discussion.title}"

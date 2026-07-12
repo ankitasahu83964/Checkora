@@ -121,6 +121,7 @@
 
   <body>
 
+
     <div class="nav-backdrop" id="navBackdrop"></div>
 
     <nav class="navbar">
@@ -238,6 +239,8 @@
         {% endif %}
       </div>
     </nav>
+
+    {% include 'game/includes/navbar.html' %}
 
     <main class="hero" id="hero">
       <div class="ambient-glow glow-gold"></div>
@@ -2104,14 +2107,7 @@
             }
         });
     });
-    
     </script>
-    <script src="{% static 'game/js/landing.js' %}"></script>
-
     </footer>
-      
-=======
-  </script>
->>>>>>> upstream/main
   </body>
 </html>
