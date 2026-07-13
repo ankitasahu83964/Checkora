@@ -377,6 +377,14 @@
         if (evaluationCache[fen]) {
             return Promise.resolve(evaluationCache[fen]);
         }
+        if (stockfishWorker) {
+            try {
+                stockfishWorker.terminate();
+            } catch (e) {
+                console.error("Worker terminate error:", e);
+            }
+            stockfishWorker = null;
+        }
         return new Promise((resolve) => {
             initStockfish();
 
@@ -392,7 +400,9 @@
                 }
 
                 if (line.startsWith('bestmove')) {
-                    stockfishWorker.removeEventListener('message', onMessage);
+                    if (stockfishWorker) {
+                        stockfishWorker.removeEventListener('message', onMessage);
+                    }
                     const result = { type: scoreType, value: scoreValue };
                     evaluationCache[fen] = result;
                     resolve(result);
@@ -423,7 +433,7 @@
     function updateEvalBarVisibility() {
         if (!evalBarContainer) return;
         const isPuzzle = dailyPuzzleMode;
-        const show = (gameMode === 'ai' || gameMode === 'analysis' || viewingPastState || replayMode) && !isPuzzle;
+        const show = (gameMode === 'ai' || gameMode === 'analysis' || replayMode) && !isPuzzle;
         if (show) {
             document.documentElement.classList.add('has-eval-bar');
             if (flipped) {
