@@ -190,6 +190,8 @@
     let currentPuzzleFen = null;
     let puzzleAnalyzing = false;
     let stockfishWorker = null;
+    let stockfishEvalSeq = 0;
+    let stockfishActiveReject = null;
 
     let hintLevel = 0;
 
@@ -377,17 +379,30 @@
         if (evaluationCache[fen]) {
             return Promise.resolve(evaluationCache[fen]);
         }
-        if (stockfishWorker) {
+
+        // Cancel previous request if one is active to avoid leaks and settle the promise
+        if (stockfishActiveReject) {
             try {
-                stockfishWorker.terminate();
+                stockfishActiveReject(new Error("Evaluation superseded"));
             } catch (e) {
-                console.error("Worker terminate error:", e);
+                console.error("Error settling superseded evaluation:", e);
             }
-            stockfishWorker = null;
+            stockfishActiveReject = null;
         }
-        return new Promise((resolve) => {
+
+        // Stop the current computation of the worker immediately
+        if (stockfishWorker) {
+            stockfishWorker.postMessage('stop');
+        }
+
+        stockfishEvalSeq++;
+        const currentEvalId = stockfishEvalSeq;
+
+        return new Promise((resolve, reject) => {
+            stockfishActiveReject = reject;
             initStockfish();
 
+            const activeWorker = stockfishWorker;
             let scoreType = 'cp';
             let scoreValue = 0;
 
@@ -400,19 +415,28 @@
                 }
 
                 if (line.startsWith('bestmove')) {
-                    if (stockfishWorker) {
-                        stockfishWorker.removeEventListener('message', onMessage);
+                    if (activeWorker) {
+                        activeWorker.removeEventListener('message', onMessage);
                     }
-                    const result = { type: scoreType, value: scoreValue };
-                    evaluationCache[fen] = result;
-                    resolve(result);
+                    if (currentEvalId === stockfishEvalSeq) {
+                        stockfishActiveReject = null;
+                        const result = { type: scoreType, value: scoreValue };
+                        evaluationCache[fen] = result;
+                        resolve(result);
+                    } else {
+                        reject(new Error("Evaluation superseded"));
+                    }
                 }
             };
 
-            stockfishWorker.addEventListener('message', onMessage);
-            stockfishWorker.postMessage('ucinewgame');
-            stockfishWorker.postMessage(`position fen ${fen}`);
-            stockfishWorker.postMessage('go depth 6 movetime 100');
+            if (activeWorker) {
+                activeWorker.addEventListener('message', onMessage);
+                activeWorker.postMessage('ucinewgame');
+                activeWorker.postMessage(`position fen ${fen}`);
+                activeWorker.postMessage('go depth 6 movetime 100');
+            } else {
+                reject(new Error("Worker not initialized"));
+            }
         });
     }
 
