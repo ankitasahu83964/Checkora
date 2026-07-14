@@ -942,10 +942,10 @@
     <script src="{% static 'game/js/board.js' %}"></script>
 
 <!-- First-time visitor onboarding tour -->
-<div id="tourOverlay" class="tour-overlay" style="display:none;">
-    <div id="tourTooltip" class="tour-tooltip">
+<div id="tourOverlay" class="tour-overlay" style="display:none;" role="dialog" aria-modal="true" aria-label="Onboarding tour">
+    <div id="tourTooltip" class="tour-tooltip" tabindex="-1">
         <p id="tourStepLabel" class="tour-step-label"></p>
-        <p id="tourStepText" class="tour-step-text"></p>
+        <p id="tourStepText" class="tour-step-text" aria-live="polite"></p>
         <div class="tour-actions">
             <button type="button" id="tourSkipBtn" class="tour-skip-btn">Skip tour</button>
             <button type="button" id="tourNextBtn" class="tour-next-btn">Next →</button>

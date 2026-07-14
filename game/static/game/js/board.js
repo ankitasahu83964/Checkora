@@ -152,13 +152,25 @@
         if (top < 8) top = 8;
 
         let left = rect.left;
-        if (left + 280 > window.innerWidth) {
-            left = window.innerWidth - 296;
+        const tooltipWidth = tooltip.offsetWidth || 280;
+        if (left + tooltipWidth > window.innerWidth) {
+            left = window.innerWidth - tooltipWidth - 16;
         }
         if (left < 8) left = 8;
 
         tooltip.style.top = `${top}px`;
         tooltip.style.left = `${left}px`;
+    }
+
+    function isElementActuallyVisible(el) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return false;
+        return (
+            rect.right > 0 &&
+            rect.left < window.innerWidth &&
+            rect.bottom > 0 &&
+            rect.top < window.innerHeight
+        );
     }
 
     function showTourStep(index) {
@@ -175,8 +187,9 @@
         const step = TOUR_STEPS[index];
         const targetEl = document.querySelector(step.selector);
 
-        // Skip a step gracefully if that element isn't on the page right now
-        if (!targetEl) {
+        // Skip a step gracefully if that element isn't on the page right now,
+        // or if it's currently offscreen (e.g. inside a closed mobile drawer)
+        if (!targetEl || !isElementActuallyVisible(targetEl)) {
             showTourStep(index + 1);
             return;
         }
@@ -218,6 +231,21 @@
                 showTourStep(tourStepIndex);
             }
         });
+
+        // Keep Tab from leaving the tour dialog while it's open
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key !== 'Tab') return;
+            const focusable = overlay.querySelectorAll('#tourSkipBtn, #tourNextBtn');
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        });
     }
 
     function startTour() {
@@ -227,6 +255,8 @@
         overlay.style.display = 'block';
         tourStepIndex = 0;
         showTourStep(tourStepIndex);
+        const tooltip = document.getElementById('tourTooltip');
+        if (tooltip) tooltip.focus();
     }
 
     function endTour() {
