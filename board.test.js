@@ -415,6 +415,111 @@ describe("Board UI Interactions", () => {
     expect(overlay.classList.contains("active")).toBe(false);
   });
 
+  it('handles hotkeys and visual labels for promotion', async () => {
+    const originalFetch = global.fetch;
+    const customBoard = [
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, 'P', null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null]
+    ];
+    
+    global.fetch = jest.fn((url) => {
+      if (url.includes('/api/new-game/')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({
+            valid: true,
+            board: customBoard,
+            current_turn: 'white',
+            player_color: 'white',
+            game_mode: 'pvp',
+          })
+        });
+      }
+      if (url.includes('/api/state/')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({
+            valid: true,
+            board: customBoard,
+            current_turn: 'white',
+            player_color: 'white',
+            game_mode: 'pvp',
+            white_time: 300,
+            black_time: 300,
+            paused: false,
+            captured_pieces: { white: [], black: [] },
+            move_history: []
+          })
+        });
+      }
+      if (url.includes('/api/valid-moves/')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({
+            valid_moves: [{ row: 0, col: 4 }]
+          })
+        });
+      }
+      if (url.includes('/api/move/')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({
+            valid: true,
+            board: customBoard,
+            current_turn: 'black',
+            player_color: 'white',
+            game_mode: 'pvp',
+          })
+        });
+      }
+      return Promise.resolve({
+        json: () => Promise.resolve({ valid: true })
+      });
+    });
+
+    try {
+      // Re-initialize with custom board layout FEN
+      await startNewGame('pvp', 'white', 'medium', '8/4P3/8/8/8/8/8/8 w - - 0 1', 10);
+
+      // Trigger DOM clicks instead of calling onClick directly to avoid stale closures
+      const boardEl = document.getElementById("board");
+      const e7Square = boardEl.children[1 * 8 + 4]; // row 1, col 4
+      const e8Square = boardEl.children[0 * 8 + 4]; // row 0, col 4
+
+      // Select pawn on e7 (row 1, col 4)
+      e7Square.click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Move to e8 (row 0, col 4) (promotes)
+      e8Square.click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const overlay = document.getElementById("promoOverlay");
+      expect(overlay.classList.contains("active")).toBe(true);
+
+      const promoChoices = document.getElementById("promoChoices");
+      const buttons = promoChoices.querySelectorAll(".promo-btn");
+      expect(buttons.length).toBe(4);
+      expect(buttons[0].querySelector(".promo-key").textContent).toBe("(q)");
+      expect(buttons[0].querySelector(".promo-text").textContent).toContain("Queen");
+
+      global.fetch.mockClear();
+      const event = new KeyboardEvent('keydown', { key: 'q' });
+      document.dispatchEvent(event);
+
+      expect(overlay.classList.contains("active")).toBe(false);
+
+      const moveCall = global.fetch.mock.calls.find(c => c[0].includes('/api/move/'));
+      expect(moveCall).toBeDefined();
+      const requestBody = JSON.parse(moveCall[1].body);
+      expect(requestBody.promotion_piece).toBe('q');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it('onClick ignores invalid moves when game is over', async () => {
     global.fetch.mockClear();
     // Use valid bounds but empty square (or anything, just check it doesn't do a move fetch)
