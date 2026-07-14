@@ -1,10 +1,12 @@
 import concurrent.futures
 from django.test import TransactionTestCase, RequestFactory
+from django.db import connection
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.middleware import SessionMiddleware
 from game.models import ActiveGame
 from game.services import create_or_update_active_game, save_game_state_helper
 import time
+import unittest
 
 INITIAL_BOARD = [
     ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'],
@@ -60,25 +62,49 @@ class ActiveGameConcurrencyTest(TransactionTestCase):
         request.user = self.user
         return request
 
-    def test_sequential_replacements_leave_exactly_one_active_game(self):
+    @unittest.skipIf(connection.vendor == 'sqlite', "SQLite raises OperationalError on concurrent writes")
+    def test_concurrent_replacements_leave_exactly_one_active_game(self):
         """
-        Simulates what two concurrent /new-game calls do sequentially.
-        After both complete, only ONE ActiveGame row must exist for the user.
+        Creates a deterministic race window to verify that select_for_update
+        prevents IntegrityError when two /new-game requests arrive simultaneously.
         """
+        import concurrent.futures
+        import time
+        from unittest.mock import patch
+        from django.db import connection as db_conn
+
         state_1 = _make_game_state(1)
         state_2 = _make_game_state(2)
 
         request_1 = self._make_request()
         request_2 = self._make_request()
 
-        # First replacement creates the row
-        create_or_update_active_game(request_1, state_1)
-        self.assertEqual(
-            ActiveGame.objects.filter(user=self.user, status="active").count(), 1
-        )
+        def worker(req, state):
+            try:
+                create_or_update_active_game(req, state)
+            finally:
+                db_conn.close()
 
-        # Second replacement deletes-and-recreates; still only one row
-        create_or_update_active_game(request_2, state_2)
+        # Widen the race window: when the first thread enters the transaction
+        # and reaches `ActiveGame.objects.create`, it pauses.
+        # If the select_for_update() guard were missing, the second thread would
+        # also enter, and both would attempt to create, causing an IntegrityError.
+        original_create = ActiveGame.objects.create
+
+        def mock_create(*args, **kwargs):
+            time.sleep(0.3)
+            return original_create(*args, **kwargs)
+
+        with patch('game.services.ActiveGame.objects.create', side_effect=mock_create):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                f1 = executor.submit(worker, request_1, state_1)
+                time.sleep(0.05)  # Ensure thread 1 starts and acquires lock
+                f2 = executor.submit(worker, request_2, state_2)
+                
+                # Both futures must complete without IntegrityError
+                f1.result()
+                f2.result()
+
         self.assertEqual(
             ActiveGame.objects.filter(user=self.user, status="active").count(), 1
         )

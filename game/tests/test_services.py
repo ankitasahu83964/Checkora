@@ -386,7 +386,7 @@ class ActiveGamePersistenceTest(TestCase):
 
         Verifies that after logging in from a new device (fresh session), the
         /api/resume/ endpoint correctly:
-          1. Returns the persisted chess board state.
+          1. Returns the persisted chess board state, including moves.
           2. Restores session metadata (white_name, black_name, difficulty) so
              that the resumed game shows the correct player names and AI settings.
         """
@@ -400,6 +400,13 @@ class ActiveGamePersistenceTest(TestCase):
         }), content_type='application/json')
         self.assertEqual(response.status_code, 200)
         
+        # 2. Make a real move to ensure mutations are tracked
+        move_resp = self.client.post('/api/move/', json.dumps({
+            'from_row': 6, 'from_col': 4,
+            'to_row': 4, 'to_col': 4
+        }), content_type='application/json')
+        self.assertEqual(move_resp.status_code, 200)
+        
         # Verify the metadata is embedded in the DB record
         ag = ActiveGame.objects.filter(user=self.user, status="active").first()
         self.assertIsNotNone(ag)
@@ -407,7 +414,7 @@ class ActiveGamePersistenceTest(TestCase):
         self.assertEqual(metadata.get('difficulty'), 'hard')
         self.assertEqual(metadata.get('white_name'), 'Alice')
         
-        # 2. Simulate device 2 by creating a completely fresh session
+        # 3. Simulate device 2 by creating a completely fresh session
         self.client.logout()
         self.client.force_login(self.user)
         
@@ -415,17 +422,24 @@ class ActiveGamePersistenceTest(TestCase):
         self.assertNotIn('difficulty', self.client.session)
         self.assertNotIn('white_name', self.client.session)
         
-        # 3. Call resume-game (this is the cross-device resume endpoint)
+        # 4. Call resume-game (this is the cross-device resume endpoint)
         response_resume = self.client.post('/api/resume/', content_type='application/json')
         self.assertEqual(response_resume.status_code, 200)
         data = response_resume.json()
         self.assertTrue(data['valid'])
         
-        # 4. Verify the response contains the correct metadata values
+        # 5. Verify the response contains the correctly restored board state
+        self.assertEqual(data.get('current_turn'), 'black')
+        self.assertEqual(len(data.get('move_history', [])), 1)
+        self.assertEqual(data['move_history'][0]['san'], 'e4')
+        self.assertIsNone(data['board'][6][4])  # e2 is empty
+        self.assertEqual(data['board'][4][4], 'P')  # e4 has a white pawn
+        
+        # 6. Verify the response contains the correctly restored metadata values
         self.assertEqual(data.get('difficulty'), 'hard')
         self.assertEqual(data.get('white_name'), 'Alice')
         
-        # 5. Verify the session key was updated to the new device session
+        # 7. Verify the session key was updated to the new device session
         ag.refresh_from_db()
         new_session_key = self.client.session.session_key
         self.assertEqual(ag.session_key, new_session_key)

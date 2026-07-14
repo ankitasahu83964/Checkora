@@ -82,7 +82,7 @@ def save_game_state_helper(request, active_game, game_dict, current_version):
         if not active_game:
             with transaction.atomic():
                 # Lock the user row to serialize concurrent replacements
-                User.objects.select_for_update().filter(pk=request.user.pk).exists()
+                User.objects.select_for_update().get(pk=request.user.pk)
 
                 ActiveGame.objects.filter(user=request.user).delete()
                 ActiveGame.objects.filter(session_key=request.session.session_key).delete()
