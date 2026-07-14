@@ -65,6 +65,14 @@ def save_game_state_helper(request, active_game, game_dict, current_version):
     Returns True if successfully saved, False if optimistic locking conflict occurred.
     For anonymous users, saves to request.session['game'] and updates metadata tracker.
     """
+    # Carry forward session metadata if it exists and hasn't been explicitly provided.
+    # This prevents mutations (like moves) from wiping out the metadata dictionary.
+    if 'metadata' not in game_dict:
+        if active_game and active_game.game_state and 'metadata' in active_game.game_state:
+            game_dict['metadata'] = active_game.game_state['metadata']
+        elif 'game' in request.session and isinstance(request.session['game'], dict) and 'metadata' in request.session['game']:
+            game_dict['metadata'] = request.session['game']['metadata']
+
     validate_game_state(game_dict)
     
     if hasattr(request, 'user') and request.user.is_authenticated:

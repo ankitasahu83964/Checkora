@@ -453,6 +453,30 @@ class ActiveGamePersistenceTest(TestCase):
         self.assertIn('difficulty', meta)
         self.assertIn('opening', meta)
 
+    def test_metadata_preserved_after_move(self):
+        """
+        Verify that making a move does not wipe out the metadata dictionary
+        stored in the game_state.
+        """
+        self.client.post('/api/new-game/', json.dumps({
+            'mode': 'pvp',
+            'time_limit': 600,
+            'white_name': 'Dave',
+            'black_name': 'Eve',
+        }), content_type='application/json')
+        
+        # Make a move
+        resp = self.client.post('/api/move/', json.dumps({
+            'from_row': 6, 'from_col': 4,
+            'to_row': 4, 'to_col': 4
+        }), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        
+        ag = ActiveGame.objects.get(user=self.user, status='active')
+        self.assertIn('metadata', ag.game_state)
+        self.assertEqual(ag.game_state['metadata']['white_name'], 'Dave')
+        self.assertEqual(ag.game_state['metadata']['black_name'], 'Eve')
+
     def test_session_refresh_rotation(self):
         # Start a game
         self.client.post('/api/new-game/', json.dumps({
