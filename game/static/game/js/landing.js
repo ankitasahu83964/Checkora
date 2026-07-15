@@ -32,3 +32,16 @@ document.addEventListener("DOMContentLoaded", () => {
         if (window.innerWidth > 768) closeMenu();
     });
 });
+
+// ── Chess Quote (Hero → Platform Capabilities) ──
+document.addEventListener("DOMContentLoaded", () => {
+    const quoteTextEl = document.getElementById("chessQuoteText");
+    const quoteAuthorEl = document.getElementById("chessQuoteAuthor");
+
+    if (!quoteTextEl || !quoteAuthorEl) return;
+
+    const CHESS_QUOTE = { text: "Every chess master was once a beginner.", author: "Irving Chernev" };
+
+    quoteTextEl.textContent = CHESS_QUOTE.text;
+    quoteAuthorEl.textContent = CHESS_QUOTE.author;
+});
