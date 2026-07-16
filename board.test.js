@@ -509,8 +509,7 @@ describe("Board UI Interactions", () => {
       global.fetch.mockClear();
  
       // Dispatch an invalid key 'x' and assert overlay stays active and no fetch call is made
-      const invalidEvent = new KeyboardEvent('keydown', { key: 'x' });
-      document.dispatchEvent(invalidEvent);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
       await flushPromises();
       expect(overlay.classList.contains("active")).toBe(true);
       expect(global.fetch.mock.calls.length).toBe(0);
@@ -521,8 +520,7 @@ describe("Board UI Interactions", () => {
       expect(document.activeElement).toBe(inputEl);
  
       // Dispatch an uppercase 'Q' and assert overlay closes and correct move is submitted
-      const event = new KeyboardEvent('keydown', { key: 'Q' });
-      document.dispatchEvent(event);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Q' }));
       await flushPromises();
 
       expect(overlay.classList.contains("active")).toBe(false);
