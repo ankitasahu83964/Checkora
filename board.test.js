@@ -506,7 +506,21 @@ describe("Board UI Interactions", () => {
       expect(buttons[0].querySelector(".promo-text").textContent).toContain("Queen");
 
       global.fetch.mockClear();
-      const event = new KeyboardEvent('keydown', { key: 'q' });
+
+      // Dispatch an invalid key 'x' and assert overlay stays active and no fetch call is made
+      const invalidEvent = new KeyboardEvent('keydown', { key: 'x' });
+      document.dispatchEvent(invalidEvent);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(overlay.classList.contains("active")).toBe(true);
+      expect(global.fetch.mock.calls.length).toBe(0);
+
+      // Focus an input element to verify keydown intercepts even when inputs are focused
+      const inputEl = document.getElementById("sanMoveInput");
+      inputEl.focus();
+      expect(document.activeElement).toBe(inputEl);
+
+      // Dispatch an uppercase 'Q' and assert overlay closes and correct move is submitted
+      const event = new KeyboardEvent('keydown', { key: 'Q' });
       document.dispatchEvent(event);
       await new Promise(resolve => setTimeout(resolve, 0));
 
@@ -516,6 +530,9 @@ describe("Board UI Interactions", () => {
       expect(moveCall).toBeDefined();
       const requestBody = JSON.parse(moveCall[1].body);
       expect(requestBody.promotion_piece).toBe('q');
+
+      // Blur the input element at the end of the test to clean up focus state
+      inputEl.blur();
     } finally {
       global.fetch = originalFetch;
     }

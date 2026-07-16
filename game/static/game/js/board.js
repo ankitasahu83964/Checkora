@@ -5279,9 +5279,6 @@ async function handleSanMove() {
     document.addEventListener('keydown', e => {
         if (e.repeat) return;
 
-        const tag = document.activeElement && document.activeElement.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
         if (promoOverlay && promoOverlay.classList.contains('active')) {
             const key = e.key.toLowerCase();
             if (key === 'q' || key === 'r' || key === 'b' || key === 'n') {
@@ -5292,6 +5289,9 @@ async function handleSanMove() {
             // Ignore all other game commands when promotion is pending
             return;
         }
+
+        const tag = document.activeElement && document.activeElement.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
         if (replayMode) {
             if (e.key === 'ArrowLeft') {
