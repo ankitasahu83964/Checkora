@@ -2079,12 +2079,32 @@
             { key: 'n', label: 'Knight' },
         ];
         promoChoices.innerHTML = '';
-        pieces.forEach(({ key }) => {
+        pieces.forEach(({ key, label }) => {
             const btn = document.createElement('button');
             btn.className = 'promo-btn';
+            btn.setAttribute('aria-label', `${label} (${key})`);
+            
             const img = document.createElement('img');
             img.src = PIECE_IMG[prefix + key];
+            img.alt = '';
+            img.setAttribute('aria-hidden', 'true');
             btn.appendChild(img);
+            
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'promo-label';
+            labelSpan.setAttribute('aria-hidden', 'true');
+            const keySpan = document.createElement('span');
+            keySpan.className = 'promo-key';
+            keySpan.textContent = `(${key})`;
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'promo-text';
+            nameSpan.textContent = ` ${label}`;
+            
+            labelSpan.appendChild(keySpan);
+            labelSpan.appendChild(nameSpan);
+            btn.appendChild(labelSpan);
+            
             btn.onclick = () => onPromoChoice(key);
             promoChoices.appendChild(btn);
         });
@@ -5260,7 +5280,18 @@ async function handleSanMove() {
     document.addEventListener('keydown', e => {
         if (e.repeat) return;
 
-        const tag = document.activeElement && document.activeElement.tagName;
+        if (promoOverlay && promoOverlay.classList.contains('active')) {
+            const key = e.key.toLowerCase();
+            if (key === 'q' || key === 'r' || key === 'b' || key === 'n') {
+                e.preventDefault();
+                onPromoChoice(key);
+                return;
+            }
+            // Ignore all other game commands when promotion is pending
+            return;
+        }
+
+        const tag = document.activeElement?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
         if (replayMode) {
